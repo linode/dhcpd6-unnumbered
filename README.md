@@ -25,7 +25,7 @@
 ### NOTES:
 - Currently the server hands out ia_na non-temporary address, dns servers, domain-name, search domain, hostname.  RA's are still needed for the default gw, set a nd-prefix in the accepted prefix range with the offlink flag set, managed-flag set, and other config flag set.
 
-### usage::
+### Usage:
 ```
 dhcpv6d-unnumbered --help
 ```
@@ -33,4 +33,9 @@ dhcpv6d-unnumbered --help
 ### Example:
 ```
 /dhcpv6d-unnumbered -regex "et1$" -accept-prefix "2600:3c03::/64" -multicast -loglevel debug  -http-url "http://[2600:3c02::f03c:93ff:fe60:1d33]/ipxe.efi"
+```
+
+### Build:
+```
+GOOS=LINUX go build
 ```

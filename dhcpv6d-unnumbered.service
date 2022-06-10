@@ -1,0 +1,12 @@
+[Unit]
+Description=DHCPV6D unnumbered
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+EnvironmentFile=-/etc/default/dhcpv6d-unnumbered
+ExecStart=/usr/sbin/dhcpv6d-unnumbered $DHCPV6D_UNNUMBERED_OPT
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target

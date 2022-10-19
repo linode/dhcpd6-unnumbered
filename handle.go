@@ -55,23 +55,7 @@ func (l *Listener) HandleMsg6(buf []byte, oob *ipv6.ControlMessage, peer *net.UD
 	}
 
 	// by default set the first IP in our return slice of routes
-
 	pickedIP := ifiRoutes[0].IP
-	for _, ip := range ifiRoutes {
-		// if the first IP in the ifiRoutes slice is in the ignoreIPs, override it with this one.
-		// doing it this way will allow the last private IP to stick anyway in case there is no public IP assigned to a VM
-
-		// check if the client requests a specific IP and still owns it
-		// if so let 'em have it, even if private
-		if acceptPrefix.Contains(ip.IP) {
-			ll.Debugf("address %s picked", ip.IP.String())
-			pickedIP = ip.IP
-			break
-		} else {
-			ll.Warnf("no routes matched in the accepted prefix range on %s", ifi.Name)
-		}
-	}
-
 	ll.Debugf("picked ip: %v", pickedIP)
 
 	// mix DNS but mix em consistently so same IP gets the same order

@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"fmt"
 	"regexp"
 	"sync"
@@ -11,7 +10,7 @@ import (
 
 // Engine is the main object collecting all running taps
 type Engine struct {
-	tap   map[int]Tap
+	tap   map[int]*Listener
 	lock  sync.RWMutex
 	regex *regexp.Regexp
 }
@@ -24,7 +23,7 @@ func NewEngine(regex string) (*Engine, error) {
 	}
 
 	return &Engine{
-		tap:   make(map[int]Tap),
+		tap:   make(map[int]*Listener),
 		lock:  sync.RWMutex{},
 		regex: r,
 	}, nil
@@ -37,40 +36,34 @@ func (e *Engine) Qualifies(ifName string) bool {
 
 // Add adds a new Interface to be handled by the engine
 func (e *Engine) Add(ifIdx int) {
-	t, err := NewTap(ifIdx)
+	t, err := NewListener(ifIdx)
 	if err != nil {
 		ll.WithFields(ll.Fields{"InterfaceID": ifIdx}).Errorf("failed adding ifIndex %d: %s", ifIdx, err)
 		return
 	}
 
-	ll.WithFields(ll.Fields{"Interface": t.Ifi.Name}).Infof("adding %s", t.Ifi.Name)
+	ll.WithFields(ll.Fields{"Interface": t.ifi.Name}).Infof("adding %s", t.ifi.Name)
 
 	// need to lock/handle concurrency due to the cleanup inside the go routine
 	// eventually we could add some more logic to deal with on the fly route-changes by hooking into the routes channel
 	e.lock.Lock()
 	//assigning a copy to the map so I don't have to deal with concurrency while working with the tap itself
-	e.tap[ifIdx] = *t
+	e.tap[ifIdx] = t
 	e.lock.Unlock()
 
 	go func() {
 		if err := t.Listen(); err != nil {
-			// Context cancel means a signal was sent, so no need to log an error.
-			if err == context.Canceled {
-				ll.WithFields(ll.Fields{"Interface": t.Ifi.Name}).Infof("%s closed", t.Ifi.Name)
-			} else {
-				ll.WithFields(ll.Fields{"Interface": t.Ifi.Name}).Errorf("%s failed with %s", t.Ifi.Name, err)
-			}
-
-			// cleanup after closing up
-			e.lock.Lock()
-			delete(e.tap, ifIdx)
-			e.lock.Unlock()
+			ll.WithFields(ll.Fields{"Interface": t.ifi.Name}).Errorf("%s failed with %s", t.ifi.Name, err)
 		}
+		// cleanup after closing up
+		e.lock.Lock()
+		delete(e.tap, ifIdx)
+		e.lock.Unlock()
 	}()
 }
 
 // Get returns a lookedup Tap interface thread safe
-func (e *Engine) Get(ifIdx int) Tap {
+func (e *Engine) Get(ifIdx int) *Listener {
 	e.lock.RLock()
 	defer e.lock.RUnlock()
 	return e.tap[ifIdx]
@@ -89,7 +82,7 @@ func (e *Engine) Close(ifIdx int) {
 	e.lock.RLock()
 	tap := e.tap[ifIdx]
 	e.lock.RUnlock()
-	ifName := tap.Ifi.Name
+	ifName := tap.ifi.Name
 	ll.WithFields(ll.Fields{"Interface": ifName}).Infof("removing %s", ifName)
 	tap.Close()
 }

@@ -17,16 +17,10 @@ const (
 )
 
 var (
-	regex        *regexp.Regexp
-	acceptPrefix *net.IPNet
-	dns          listIP
+	regex *regexp.Regexp
+	dns   listIP
 
-	flagIfiRegex     = flag.String("regex", "placeholder$", "regex to match interfaces.")
-	flagAcceptPrefix = flag.String(
-		"accept-prefix",
-		"",
-		"IPv6 prefix to match host routes",
-	)
+	flagIfiRegex         = flag.String("regex", "placeholder$", "regex to match interfaces.")
 	flagDynHost          = flag.Bool("dynamic-hostname", false, "dynamic hostname generated from {IP/./-}.domainname")
 	flagHostnameOverride = flag.Bool(
 		"hostname-override",
@@ -91,12 +85,6 @@ func main() {
 	}
 
 	ll.Infof("Handling Interfaces matching '%s'", regex.String())
-
-	_, acceptPrefix, err = net.ParseCIDR(*flagAcceptPrefix)
-	if err != nil {
-		ll.Fatalf("unable to parse accept-prefix range: %v", err)
-	}
-	ll.Infof("accepting routes from %v", acceptPrefix)
 
 	if len(dns) == 0 {
 		err := dns.Set("2620:fe::9")

@@ -1,12 +1,10 @@
 package main
 
 import (
-	"context"
 	"fmt"
 	"log"
 	"net"
 	"sync"
-	"time"
 
 	"github.com/insomniacslk/dhcp/dhcpv6"
 	"github.com/insomniacslk/dhcp/dhcpv6/server6"
@@ -17,10 +15,8 @@ import (
 
 // Listener is the core struct
 type Listener struct {
-	c     *ipv6.PacketConn
-	ifi   *net.Interface
-	ctx   context.Context
-	Close context.CancelFunc
+	c   *ipv6.PacketConn
+	ifi *net.Interface
 }
 
 var bufpool = sync.Pool{New: func() interface{} { r := make([]byte, MaxDatagram); return &r }}
@@ -50,14 +46,14 @@ func NewListener(idx int) (*Listener, error) {
 	}
 	c.JoinGroup(ifi, &addr)
 
-	ctx, cancel := context.WithCancel(context.Background())
-
 	return &Listener{
-		c:     c,
-		ifi:   ifi,
-		ctx:   ctx,
-		Close: cancel,
+		c:   c,
+		ifi: ifi,
 	}, nil
+}
+
+func (l *Listener) Close() error {
+	return l.c.Close()
 }
 
 // Listen staifiRoutes listening for incoming DHCP requests
@@ -67,17 +63,8 @@ func (l *Listener) Listen() error {
 		b := *bufpool.Get().(*[]byte)
 		b = b[:MaxDatagram] //Reslice to max capacity in case the buffer in pool was resliced smaller
 
-		l.c.SetDeadline(time.Now().Add(1 * time.Second))
-
 		n, oob, peer, err := l.c.ReadFrom(b)
 		if err != nil {
-			// Was the context canceled already?
-			select {
-			case <-l.ctx.Done():
-				return context.Canceled
-				//fmt.Errorf("got stopped by %v while still dialing %v", t.ctx.Err(), err)
-			default:
-			}
 			log.Printf("Error reading from connection: %v", err)
 			return err
 		}

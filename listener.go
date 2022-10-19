@@ -1,11 +1,11 @@
 package main
 
 import (
-	"io"
 	"log"
 	"net"
 	"sync"
 
+	"github.com/insomniacslk/dhcp/dhcpv6"
 	"github.com/insomniacslk/dhcp/dhcpv6/server6"
 
 	ll "github.com/sirupsen/logrus"
@@ -16,12 +16,11 @@ import (
 type Listener struct {
 	c   *ipv6.PacketConn
 	ifi *net.Interface
-	sIP net.IP
 }
 
-type listener interface {
-	io.Closer
-}
+//type listener interface {
+//	io.Closer
+//}
 
 // Servers contains state for a running server (with possibly multiple interfaces/listeners)
 type Servers struct {
@@ -32,42 +31,26 @@ type Servers struct {
 var bufpool = sync.Pool{New: func() interface{} { r := make([]byte, MaxDatagram); return &r }}
 
 // NewListener creates a new instance of DHCP listener
-func StartListeners6() (*Servers, error) {
-	srv := Servers{
-		errors: make(chan error),
+func NewListener(ifi *net.Interface) (*Listener, error) {
+	addr := net.UDPAddr{
+		IP:   dhcpv6.AllDHCPRelayAgentsAndServers,
+		Port: dhcpv6.DefaultServerPort,
+		Zone: ifi.Name,
 	}
-	addrs, err := allIntfsLLMulticast()
+
+	log.Printf("Starting DHCPv6 server for Interface %s", ifi.Name)
+	l6 := Listener{}
+	//intf, _ := net.InterfaceByName(addr.Zone)
+	udpConn, err := server6.NewIPv6UDPConn(addr.Zone, &addr)
 	if err != nil {
-		ll.Warnf("failed to join multicast groups: %s", err)
+		ll.Warnf("failed to create a UDP Conn for Ifi %s: %s", ifi.Name, err)
+		return nil, err
 	}
-	log.Println("Starting DHCPv6 server")
-	for _, addr := range addrs {
-		l6 := Listener{}
-		intf, _ := net.InterfaceByName(addr.Zone)
-		udpConn, err := server6.NewIPv6UDPConn(addr.Zone, &addr)
-		if err != nil {
-			ll.Warnf("failed to create a UDP Conn: %s", err)
-			goto cleanup
-		}
-		l6.c = ipv6.NewPacketConn(udpConn)
-		err = l6.c.SetControlMessage(ipv6.FlagInterface, true)
-		l6.c.JoinGroup(intf, &addr)
-		srv.listeners = append(srv.listeners, l6)
-		go func() {
-			srv.errors <- l6.Listen6()
-		}()
-	}
-	return &srv, nil
+	l6.c = ipv6.NewPacketConn(udpConn)
+	err = l6.c.SetControlMessage(ipv6.FlagInterface, true)
+	l6.c.JoinGroup(ifi, &addr)
 
-cleanup:
-	srv.Close()
-	return nil, err
-}
-
-// SetSource sets the DHCP server IP and Identified in the offer
-func (l *Listener) SetSource(ip net.IP) {
-	l.sIP = ip
-	ll.Infof("Sending from %s", l.sIP)
+	return &l6, nil
 }
 
 // Listen staifiRoutes listening for incoming DHCP requests

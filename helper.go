@@ -1,44 +1,13 @@
 package main
 
 import (
-	"errors"
 	"fmt"
 	"net"
 	"os"
 	"strings"
 
-	"github.com/insomniacslk/dhcp/dhcpv6"
-	ll "github.com/sirupsen/logrus"
 	"github.com/vishvananda/netlink"
 )
-
-func getSourceIP() (net.IP, error) {
-	lo, err := net.InterfaceByName("lo")
-	if err != nil {
-		return nil, err
-	}
-	loAddrs, err := lo.Addrs()
-	if err != nil {
-		return nil, err
-	}
-	var sIP net.IP
-	for _, addr := range loAddrs {
-		switch v := addr.(type) {
-		case *net.IPNet:
-			sIP = v.IP
-		case *net.IPAddr:
-			sIP = v.IP
-		default:
-			continue
-		}
-
-		if sIP.IsGlobalUnicast() {
-			return sIP, nil
-		}
-	}
-
-	return nil, nil
-}
 
 // getDynamicHostname will generate hostname from IP and predefined domainname
 func getDynamicHostname(ip net.IP) string {
@@ -128,25 +97,13 @@ func getHostRoutesIPv6(ifName string) ([]*net.IPNet, error) {
 	return r, nil
 }
 
-func allIntfsLLMulticast() ([]net.UDPAddr, error) {
-	var parsedAddrs []net.UDPAddr
-	intfs, err := net.Interfaces()
-	if err != nil {
-		ll.Warnf("unable to retrieve slice of interfaces: %s", err)
+// linkReady will return true when its ok to bind the ndp listener to it.
+// it will wait for the TX counter to start incrementing since before thats the case
+// there are certain aspects not fulfilled. (i.e. link local may not yet be assinged etc
+// it will also help on edge cases where the interface is not yet fully provisioned even though up
+func linkReady(l *netlink.LinkAttrs) bool {
+	if l.OperState == 6 && l.Flags&net.FlagUp == net.FlagUp && l.Statistics.TxPackets > 0 {
+		return true
 	}
-	for _, intf := range intfs {
-		if regex.MatchString(intf.Name) {
-			parsedAddrs = append(parsedAddrs, net.UDPAddr{
-				IP:   dhcpv6.AllDHCPRelayAgentsAndServers,
-				Port: dhcpv6.DefaultServerPort,
-				Zone: intf.Name,
-			})
-		}
-
-	}
-
-	if len(parsedAddrs) == 0 {
-		return nil, errors.New("No suitable interface found for multicast listener")
-	}
-	return parsedAddrs, nil
+	return false
 }

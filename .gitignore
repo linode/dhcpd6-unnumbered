@@ -1,4 +1,6 @@
 dhcpd-unnumbered
+dhcpv6d-unnumbered
+dhcpd6-unnumbered
 my-debhelper/
 dist/
 debian/changelog

@@ -4,11 +4,11 @@ import (
 	"flag"
 	"fmt"
 	"io/ioutil"
-	"log"
 	"net"
 	"regexp"
 
 	ll "github.com/sirupsen/logrus"
+	"github.com/vishvananda/netlink"
 )
 
 const (
@@ -22,7 +22,6 @@ var (
 	dns          listIP
 
 	flagIfiRegex     = flag.String("regex", "placeholder$", "regex to match interfaces.")
-	flagUseMulticast = flag.Bool("multicast", false, "enable joining dhcpv6 multicast group")
 	flagAcceptPrefix = flag.String(
 		"accept-prefix",
 		"",
@@ -108,12 +107,85 @@ func main() {
 	}
 	ll.Infof("using DNS %v", dns)
 
-	// start server
-	srv, err := StartListeners6()
+	linksFeed := make(chan netlink.LinkUpdate, 10)
+	linksDone := make(chan struct{})
+
+	// lets hook into the netlink channel for push notifications from the kernel
+	if err := netlink.LinkSubscribe(linksFeed, linksDone); err != nil {
+		ll.Fatalf("unable to open netlink feed: %v", err)
+	}
+
+	// get existing list of links, in case we startup when vms are already active
+	t, err := netlink.LinkList()
 	if err != nil {
-		log.Fatal(err)
+		ll.Fatalf("unable to get current list of links: %v", err)
 	}
-	if err := srv.Wait(); err != nil {
-		log.Print(err)
+
+	e, err := NewEngine(*flagIfiRegex)
+	if err != nil {
+		ll.Fatalf("unable to get started: %v", err)
 	}
+
+	// when starting up making sure any already existing interfaces are being handled and started
+	for _, link := range t {
+
+		ifName := link.Attrs().Name
+
+		if !e.Qualifies(ifName) {
+			ll.WithFields(ll.Fields{"Interface": ifName}).
+				Debugf("%s did not qualify, skipping...", ifName)
+			continue
+		}
+
+		if linkReady(link.Attrs()) {
+			e.Add(link.Attrs().Index)
+		}
+	}
+
+	// as we go on, detect any NIC changes from netlink and act accordingly
+	for {
+		select {
+		case <-linksDone:
+			ll.Fatalln("netlink feed ended")
+		case link := <-linksFeed:
+			ifName := link.Attrs().Name
+			tapState := link.Attrs().OperState
+
+			if !e.Qualifies(ifName) {
+				ll.WithFields(ll.Fields{"Interface": ifName}).
+					Debugf("%s did not qualify, skipping...", ifName)
+				continue
+			}
+
+			ll.WithFields(ll.Fields{"Interface": ifName}).Tracef(
+				"Netlink fired: %v, admin: %v, OperState: %v, Rx/Tx: %v/%v",
+				ifName,
+				link.Attrs().Flags&net.FlagUp,
+				tapState,
+				link.Attrs().Statistics.RxPackets,
+				link.Attrs().Statistics.TxPackets,
+			)
+
+			tapExists := e.Exists(link.Attrs().Index)
+
+			if !tapExists && linkReady(link.Attrs()) {
+				e.Add(link.Attrs().Index)
+			} else if tapExists && !linkReady(link.Attrs()) {
+				e.Close(link.Attrs().Index)
+			} else {
+				ll.Tracef("%s Exists: %v, OperState: %s ... nothing to do?", ifName, tapExists, tapState)
+			}
+		}
+	}
+
+	/*
+		// start server
+		srv, err := StartListeners6()
+		if err != nil {
+			log.Fatal(err)
+		}
+		if err := srv.Wait(); err != nil {
+			log.Print(err)
+		}
+	*/
 }

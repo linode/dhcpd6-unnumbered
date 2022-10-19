@@ -74,15 +74,6 @@ func (l *Listener) HandleMsg6(buf []byte, oob *ipv6.ControlMessage, peer *net.UD
 
 	ll.Debugf("picked ip: %v", pickedIP)
 
-	// Default GW local to client
-	gw := net.ParseIP("fe80::1")
-
-	// source IP to be sending from
-	sIP := l.sIP
-	if sIP == nil {
-		sIP = gw
-	}
-
 	// mix DNS but mix em consistently so same IP gets the same order
 	dns := mixDNS(pickedIP)
 

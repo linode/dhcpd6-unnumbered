@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net"
-	"regexp"
 
 	ll "github.com/sirupsen/logrus"
 	"github.com/vishvananda/netlink"
@@ -17,10 +16,8 @@ const (
 )
 
 var (
-	regex *regexp.Regexp
-	dns   listIP
+	dns listIP
 
-	flagIfiRegex         = flag.String("regex", "placeholder$", "regex to match interfaces.")
 	flagDynHost          = flag.Bool("dynamic-hostname", false, "dynamic hostname generated from {IP/./-}.domainname")
 	flagHostnameOverride = flag.Bool(
 		"hostname-override",
@@ -55,6 +52,8 @@ var (
 func main() {
 	flagLogLevel := flag.String("loglevel", "info", fmt.Sprintf("Log level. One of %v", getLogLevels()))
 	flag.Var(&dns, "dns", "dns server to use in DHCP offer, option can be used multiple times for more than 1 server")
+	flagAcceptPrefix := flag.String("accept-prefix", "::/0", "IPv6 prefix to match host routes")
+	flagIfiRegex := flag.String("regex", "placeholder$", "regex to match interfaces.")
 	flag.Parse()
 
 	ll.SetFormatter(&ll.TextFormatter{
@@ -78,14 +77,6 @@ func main() {
 		ll.Infof("Hostname override enabled from %s", *flagHostnamePath)
 	}
 
-	var err error
-	regex, err = regexp.Compile(*flagIfiRegex)
-	if err != nil {
-		ll.Fatalf("unable to parse interface regex: %v", err)
-	}
-
-	ll.Infof("Handling Interfaces matching '%s'", regex.String())
-
 	if len(dns) == 0 {
 		err := dns.Set("2620:fe::9")
 		if err != nil {
@@ -94,6 +85,11 @@ func main() {
 		ll.Infof("no DNS provided, using defaults")
 	}
 	ll.Infof("using DNS %v", dns)
+
+	_, pfx, err := net.ParseCIDR(*flagAcceptPrefix)
+	if err != nil {
+		ll.Fatalf("unable to parse prefix: %v", err)
+	}
 
 	linksFeed := make(chan netlink.LinkUpdate, 10)
 	linksDone := make(chan struct{})
@@ -113,6 +109,8 @@ func main() {
 	if err != nil {
 		ll.Fatalf("unable to get started: %v", err)
 	}
+
+	e.Flags.SetPrefix(pfx)
 
 	// when starting up making sure any already existing interfaces are being handled and started
 	for _, link := range t {

@@ -12,7 +12,7 @@ import (
 type Engine struct {
 	tap   map[int]*Listener
 	lock  sync.RWMutex
-	regex *regexp.Regexp
+	Flags *ListenerOptions
 }
 
 // NewEngine just setups up a empty new engine
@@ -22,21 +22,25 @@ func NewEngine(regex string) (*Engine, error) {
 		return nil, fmt.Errorf("unable to parse interface regex %s: %w", regex, err)
 	}
 
+	ll.Infof("Handling Interfaces matching '%s'", r.String())
+
 	return &Engine{
-		tap:   make(map[int]*Listener),
-		lock:  sync.RWMutex{},
-		regex: r,
+		tap:  make(map[int]*Listener),
+		lock: sync.RWMutex{},
+		Flags: &ListenerOptions{
+			regex: r,
+		},
 	}, nil
 }
 
 // Qualifies checks if interface qulalifies, aka matches the regex for taps to be handled
 func (e *Engine) Qualifies(ifName string) bool {
-	return e.regex.Match([]byte(ifName))
+	return e.Flags.regex.Match([]byte(ifName))
 }
 
 // Add adds a new Interface to be handled by the engine
 func (e *Engine) Add(ifIdx int) {
-	t, err := NewListener(ifIdx)
+	t, err := NewListener(ifIdx, e.Flags)
 	if err != nil {
 		ll.WithFields(ll.Fields{"InterfaceID": ifIdx}).Errorf("failed adding ifIndex %d: %s", ifIdx, err)
 		return

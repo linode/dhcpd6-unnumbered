@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"regexp"
 	"sync"
 
 	"github.com/insomniacslk/dhcp/dhcpv6"
@@ -15,14 +16,24 @@ import (
 
 // Listener is the core struct
 type Listener struct {
-	c   *ipv6.PacketConn
-	ifi *net.Interface
+	c     *ipv6.PacketConn
+	ifi   *net.Interface
+	Flags *ListenerOptions
+}
+
+type ListenerOptions struct {
+	prefix *net.IPNet
+	regex  *regexp.Regexp
+}
+
+func (lo *ListenerOptions) SetPrefix(p *net.IPNet) {
+	lo.prefix = p
 }
 
 var bufpool = sync.Pool{New: func() interface{} { r := make([]byte, MaxDatagram); return &r }}
 
 // NewListener creates a new instance of DHCP listener
-func NewListener(idx int) (*Listener, error) {
+func NewListener(idx int, o *ListenerOptions) (*Listener, error) {
 	ifi, err := net.InterfaceByIndex(idx)
 	if err != nil {
 		return nil, fmt.Errorf("unable to get interface: %v", err)
@@ -47,8 +58,9 @@ func NewListener(idx int) (*Listener, error) {
 	c.JoinGroup(ifi, &addr)
 
 	return &Listener{
-		c:   c,
-		ifi: ifi,
+		c:     c,
+		ifi:   ifi,
+		Flags: o,
 	}, nil
 }
 

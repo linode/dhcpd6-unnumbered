@@ -31,7 +31,7 @@ func (l *Listener) HandleMsg6(buf []byte, oob *ipv6.ControlMessage, peer *net.UD
 	ll.Debugf("received %s on %v", msg.Type(), ifi.Name)
 	ll.Trace(req.Summary())
 
-	if !(regex.Match([]byte(ifi.Name))) {
+	if !(l.Flags.regex.Match([]byte(ifi.Name))) {
 		ll.Warnf("dchp request on interface %v is not accepted, ignoring", ifi.Name)
 		return
 	}
@@ -55,7 +55,17 @@ func (l *Listener) HandleMsg6(buf []byte, oob *ipv6.ControlMessage, peer *net.UD
 	}
 
 	// by default set the first IP in our return slice of routes
-	pickedIP := ifiRoutes[0].IP
+	var pickedIP net.IP
+	for _, ip := range ifiRoutes {
+		if l.Flags.prefix.Contains(ip.IP) {
+			ll.Debugf("address %s picked", ip.IP.String())
+			pickedIP = ip.IP
+			break
+		}
+		ll.Warnf("no routes matched in the accepted prefix range on %s", ifi.Name)
+		return
+	}
+
 	ll.Debugf("picked ip: %v", pickedIP)
 
 	// mix DNS but mix em consistently so same IP gets the same order

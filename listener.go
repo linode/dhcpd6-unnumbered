@@ -69,7 +69,7 @@ func (l *Listener) Close() error {
 
 // Listen staifiRoutes listening for incoming DHCP requests
 func (l *Listener) Listen() error {
-	ll.Infof("Listen %s", l.ifi.Name)
+	ll.Debugf("Listen %s", l.ifi.Name)
 	for {
 		b := *bufpool.Get().(*[]byte)
 		b = b[:MaxDatagram] //Reslice to max capacity in case the buffer in pool was resliced smaller

@@ -46,7 +46,7 @@ func (e *Engine) Add(ifIdx int) {
 		return
 	}
 
-	ll.WithFields(ll.Fields{"Interface": t.ifi.Name}).Infof("adding %s", t.ifi.Name)
+	ll.WithFields(ll.Fields{"Interface": t.ifi.Name}).Tracef("adding %s", t.ifi.Name)
 
 	// need to lock/handle concurrency due to the cleanup inside the go routine
 	// eventually we could add some more logic to deal with on the fly route-changes by hooking into the routes channel

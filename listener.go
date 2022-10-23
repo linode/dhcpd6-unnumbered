@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"log"
 	"net"
 	"regexp"
 	"sync"
@@ -13,6 +12,8 @@ import (
 	ll "github.com/sirupsen/logrus"
 	"golang.org/x/net/ipv6"
 )
+
+var bufpool = sync.Pool{New: func() interface{} { r := make([]byte, MaxDatagram); return &r }}
 
 // Listener is the core struct
 type Listener struct {
@@ -30,8 +31,6 @@ func (lo *ListenerOptions) SetPrefix(p *net.IPNet) {
 	lo.prefix = p
 }
 
-var bufpool = sync.Pool{New: func() interface{} { r := make([]byte, MaxDatagram); return &r }}
-
 // NewListener creates a new instance of DHCP listener
 func NewListener(idx int, o *ListenerOptions) (*Listener, error) {
 	ifi, err := net.InterfaceByIndex(idx)
@@ -45,10 +44,10 @@ func NewListener(idx int, o *ListenerOptions) (*Listener, error) {
 		Zone: ifi.Name,
 	}
 
-	log.Printf("Starting DHCPv6 server for Interface %s", ifi.Name)
+	ll.Infof("Starting DHCPv6 server for Interface %s", ifi.Name)
 	udpConn, err := server6.NewIPv6UDPConn(addr.Zone, &addr)
 	if err != nil {
-		ll.Warnf("failed to create a UDP Conn for Ifi %s: %s", ifi.Name, err)
+		//ll.Warnf("failed to create a UDP Conn for Ifi %s: %s", ifi.Name, err)
 		return nil, err
 	}
 	c := ipv6.NewPacketConn(udpConn)
@@ -70,16 +69,17 @@ func (l *Listener) Close() error {
 
 // Listen staifiRoutes listening for incoming DHCP requests
 func (l *Listener) Listen() error {
-	ll.Infof("Listen %s", l.c.LocalAddr())
+	ll.Infof("Listen %s", l.ifi.Name)
 	for {
 		b := *bufpool.Get().(*[]byte)
 		b = b[:MaxDatagram] //Reslice to max capacity in case the buffer in pool was resliced smaller
 
 		n, oob, peer, err := l.c.ReadFrom(b)
 		if err != nil {
-			log.Printf("Error reading from connection: %v", err)
-			return err
+			//ll.Warnf("Error reading from connection: %v", err)
+			return checkNetOpError(err)
 		}
+
 		go l.HandleMsg6(b[:n], oob, peer.(*net.UDPAddr))
 	}
 }

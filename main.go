@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net"
+	"time"
 
 	ll "github.com/sirupsen/logrus"
 	"github.com/vishvananda/netlink"
@@ -17,6 +18,8 @@ const (
 
 var (
 	dns listIP
+
+	flagLeaseTime = flag.Duration("leasetime", (30 * time.Minute), "DHCP lease time. aka Preffered Lifetime, Valid Lifetime x2")
 
 	flagDynHost          = flag.Bool("dynamic-hostname", false, "dynamic hostname generated from {IP/./-}.domainname")
 	flagHostnameOverride = flag.Bool(
@@ -53,7 +56,7 @@ func main() {
 	flagLogLevel := flag.String("loglevel", "info", fmt.Sprintf("Log level. One of %v", getLogLevels()))
 	flag.Var(&dns, "dns", "dns server to use in DHCP offer, option can be used multiple times for more than 1 server")
 	flagAcceptPrefix := flag.String("accept-prefix", "::/0", "IPv6 prefix to match host routes")
-	flagIfiRegex := flag.String("regex", "placeholder$", "regex to match interfaces.")
+	flagIfiRegex := flag.String("regex", "eth.*", "regex to match interfaces.")
 	flag.Parse()
 
 	ll.SetFormatter(&ll.TextFormatter{

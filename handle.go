@@ -99,8 +99,8 @@ func (l *Listener) HandleMsg6(buf []byte, oob *ipv6.ControlMessage, peer *net.UD
 	// Options to attach to all Replies
 	optIAAdress := dhcpv6.OptIAAddress{
 		IPv6Addr:          pickedIP,
-		PreferredLifetime: time.Second * 1800,
-		ValidLifetime:     time.Second * 2700,
+		PreferredLifetime: *flagLeaseTime,
+		ValidLifetime:     *flagLeaseTime * 2,
 	}
 	dhcpv6DUID := dhcpv6.Duid{
 		Type:          dhcpv6.DUID_LLT,

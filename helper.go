@@ -11,7 +11,7 @@ import (
 
 // getDynamicHostname will generate hostname from IP and predefined domainname
 func getDynamicHostname(ip net.IP) string {
-	return strings.ReplaceAll(ip.String(), ".", "-")
+	return strings.ReplaceAll(ip.String(), ":", "-")
 }
 
 // getHostnameOverride returns a hoostname (and if applicable) a domainname read from a static file based on path+ifName
@@ -106,4 +106,13 @@ func linkReady(l *netlink.LinkAttrs) bool {
 		return true
 	}
 	return false
+}
+
+func checkNetOpError(err error) error {
+	if err != nil {
+		if strings.Contains(err.Error(), "use of closed network connection") {
+			return nil
+		}
+	}
+	return err
 }

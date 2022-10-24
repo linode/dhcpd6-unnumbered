@@ -14,43 +14,32 @@ import (
 
 // handleMsg is triggered every time there is a DHCPv6 request coming in.
 func (l *Listener) HandleMsg6(buf []byte, oob *ipv6.ControlMessage, peer *net.UDPAddr) {
-	ifi, err := net.InterfaceByIndex(oob.IfIndex)
-	if err != nil {
-		ll.Errorf("Error getting request interface: %v", err)
+	if oob.IfIndex != l.ifi.Index {
+		ll.Errorf("handleMsg6: request not on listening socket....%d != %d", oob.IfIndex, l.ifi.Index)
 		return
 	}
 
 	req, err := dhcpv6.FromBytes(buf)
 	if err != nil {
-		ll.Errorf("error parsing dhcpv6 request: %v", err)
+		ll.Errorf("handleMsg6: error parsing dhcpv6 request: %v", err)
 		return
 	}
 	msg, err := req.GetInnerMessage()
 
 	// Create a suitable basic response packet
-	ll.Debugf("received %s on %v", msg.Type(), ifi.Name)
+	ll.Debugf("handleMsg6: received %s on %v", msg.Type(), l.ifi.Name)
 	ll.Trace(req.Summary())
 
-	if !(l.Flags.regex.Match([]byte(ifi.Name))) {
-		ll.Warnf("dchp request on interface %v is not accepted, ignoring", ifi.Name)
-		return
-	}
-
-	if ifi.Flags&net.FlagUp != net.FlagUp {
-		ll.Warnf("dchp request on a interface %v, which is down. that's not right, skipping...", ifi.Name)
-		return
-	}
-
-	ifiRoutes, err := getHostRoutesIPv6(ifi.Name)
+	ifiRoutes, err := getHostRoutesIPv6(l.ifi.Index)
 	if err != nil {
-		ll.Errorf("failed to get routes for interface %v: %v", ifi.Name, err)
+		ll.Errorf("failed to get routes for interface %v: %v", l.ifi.Name, err)
 		return
 	}
-	ll.Debugf("routes found for interface %v: %v", ifi.Name, ifiRoutes)
+	ll.Debugf("handleMsg6: routes found for interface %v: %v", l.ifi.Name, ifiRoutes)
 
 	// seems like we have no host routes, not providing DHCP
 	if ifiRoutes == nil {
-		ll.Infof("seems like we have no host routes, not providing DHCP")
+		ll.Errorf("handleMsg6: we have no host routes for %s, not providing DHCP", l.ifi.Name)
 		return
 	}
 
@@ -62,11 +51,13 @@ func (l *Listener) HandleMsg6(buf []byte, oob *ipv6.ControlMessage, peer *net.UD
 			pickedIP = ip.IP
 			break
 		}
-		ll.Warnf("no routes matched in the accepted prefix range on %s", ifi.Name)
+	}
+	if pickedIP == nil {
+		ll.Errorf("handleMsg6: no routes matched in the accepted prefix range on %s", l.ifi.Name)
 		return
 	}
 
-	ll.Debugf("picked ip: %v", pickedIP)
+	ll.Debugf("handleMsg6: picked ip: %v", pickedIP)
 
 	// mix DNS but mix em consistently so same IP gets the same order
 	dns := mixDNS(pickedIP)
@@ -82,14 +73,14 @@ func (l *Listener) HandleMsg6(buf []byte, oob *ipv6.ControlMessage, peer *net.UD
 
 	// static hostname in a file (if exists) will supersede the dynamic hostname
 	if *flagHostnameOverride {
-		h, d, err := getHostnameOverride(ifi.Name)
+		h, d, err := getHostnameOverride(l.ifi.Name)
 		if err == nil {
 			hostname = h
 			if d != "" {
 				domainname = d
 			}
 		} else {
-			ll.Debugf("unable to get static hostname: %v", err)
+			ll.Warnf("handleMsg6: unable to get hostname override: %v", err)
 		}
 	}
 
@@ -105,7 +96,7 @@ func (l *Listener) HandleMsg6(buf []byte, oob *ipv6.ControlMessage, peer *net.UD
 	dhcpv6DUID := dhcpv6.Duid{
 		Type:          dhcpv6.DUID_LLT,
 		Time:          uint32(time.Now().Unix()),
-		LinkLayerAddr: ifi.HardwareAddr,
+		LinkLayerAddr: l.ifi.HardwareAddr,
 		HwType:        iana.HWTypeEthernet,
 	}
 
@@ -115,6 +106,7 @@ func (l *Listener) HandleMsg6(buf []byte, oob *ipv6.ControlMessage, peer *net.UD
 	}
 
 	msg.Options.Add(&optIAAdress)
+
 	mods = append(mods, dhcpv6.WithIANA(optIAAdress))
 	mods = append(mods, dhcpv6.WithServerID(dhcpv6DUID))
 
@@ -133,6 +125,7 @@ func (l *Listener) HandleMsg6(buf []byte, oob *ipv6.ControlMessage, peer *net.UD
 		resp, err = dhcpv6.NewReplyFromMessage(msg, mods...)
 	default:
 		ll.Errorf("handleMsg6: message type %d not supported", msg.Type())
+		return
 	}
 
 	ll.Debugf("handleMsg6: client requested %v", msg.Options.RequestedOptions())
@@ -186,7 +179,7 @@ func (l *Listener) HandleMsg6(buf []byte, oob *ipv6.ControlMessage, peer *net.UD
 		"%s to %s on %s with %s, lease %gm, hostname %s.%s",
 		resp.Type(),
 		peer.IP,
-		ifi.Name,
+		l.ifi.Name,
 		pickedIP,
 		optIAAdress.PreferredLifetime.Minutes(),
 		hostname,

@@ -28,6 +28,7 @@ type ListenerOptions struct {
 }
 
 func (lo *ListenerOptions) SetPrefix(p *net.IPNet) {
+	ll.Infof("Advertising IPs out of the %s Prefix", p.String())
 	lo.prefix = p
 }
 

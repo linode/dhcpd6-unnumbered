@@ -62,27 +62,7 @@ func (l *Listener) HandleMsg6(buf []byte, oob *ipv6.ControlMessage, peer *net.UD
 	// mix DNS but mix em consistently so same IP gets the same order
 	dns := mixDNS(pickedIP)
 
-	// should I generate a dynamic hostname?
-	hostname := *flagHostname
-	domainname := *flagDomainname
-
-	// find dynamic hostname if feature is enabled
-	if *flagDynHost {
-		hostname = getDynamicHostname(pickedIP)
-	}
-
-	// static hostname in a file (if exists) will supersede the dynamic hostname
-	if *flagHostnameOverride {
-		h, d, err := getHostnameOverride(l.ifi.Name)
-		if err == nil {
-			hostname = h
-			if d != "" {
-				domainname = d
-			}
-		} else {
-			ll.Warnf("handleMsg6: unable to get hostname override: %v", err)
-		}
-	}
+	fqdn := getHostname(l.ifi.Name, pickedIP)
 
 	// lets go compile the response
 	var mods []dhcpv6.Modifier
@@ -152,13 +132,12 @@ func (l *Listener) HandleMsg6(buf []byte, oob *ipv6.ControlMessage, peer *net.UD
 			}
 			resp.AddOption(&vendorOpts)
 		case dhcpv6.OptionFQDN:
-			fqdn := dhcpv6.OptFQDN{
+			resp.AddOption(&dhcpv6.OptFQDN{
 				Flags: 0,
 				DomainName: &rfc1035label.Labels{
-					Labels: []string{*flagDomainname},
+					Labels: []string{fqdn},
 				},
-			}
-			resp.AddOption(&fqdn)
+			})
 		case dhcpv6.OptionDNSRecursiveNameServer:
 			resp.AddOption(dhcpv6.OptDNS(dns...))
 		case dhcpv6.OptionDomainSearchList:
@@ -176,14 +155,13 @@ func (l *Listener) HandleMsg6(buf []byte, oob *ipv6.ControlMessage, peer *net.UD
 	woob := &ipv6.ControlMessage{IfIndex: oob.IfIndex}
 
 	ll.Infof(
-		"%s to %s on %s with %s, lease %gm, hostname %s.%s",
+		"%s to %s on %s with %s, lease %gm, fqdn %s",
 		resp.Type(),
 		peer.IP,
 		l.ifi.Name,
 		pickedIP,
 		optIAAdress.PreferredLifetime.Minutes(),
-		hostname,
-		domainname,
+		fqdn,
 	)
 	ll.Trace(resp.Summary())
 

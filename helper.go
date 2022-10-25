@@ -6,8 +6,37 @@ import (
 	"os"
 	"strings"
 
+	ll "github.com/sirupsen/logrus"
 	"github.com/vishvananda/netlink"
 )
+
+func getHostname(ifName string, ip net.IP) string {
+	// should I generate a dynamic hostname?
+	hostname := *flagHostname
+	domainname := *flagDomainname
+
+	// find dynamic hostname if feature is enabled
+	if *flagDynHost {
+		hostname = getDynamicHostname(ip)
+	}
+
+	// static hostname in a file (if exists) will supersede the dynamic hostname
+	if *flagHostnameOverride {
+		h, d, err := getHostnameOverride(ifName)
+		if err == nil {
+			hostname = h
+			if d != "" {
+				domainname = d
+			}
+		} else {
+			ll.Warnf("handleMsg6: unable to get hostname override: %v", err)
+		}
+	}
+
+	fqdn := fmt.Sprintf("%s.%s", hostname, domainname)
+	ll.Tracef("setting hostname %s", fqdn)
+	return fqdn
+}
 
 // getDynamicHostname will generate hostname from IP and predefined domainname
 func getDynamicHostname(ip net.IP) string {
@@ -41,6 +70,7 @@ func mixDNS(ip net.IP) []net.IP {
 		mix = append(mix, dns[i+m])
 	}
 
+	ll.Tracef("DNS mixed to %s", mix)
 	return mix
 }
 

@@ -1,11 +1,11 @@
-# dhcpv6d-unnumbered
+# dhcpd6-unnumbered
 
-### What is dhcpv6d-unnumbered?
-- dhcpv6d-unnumbered is a stateless dhcpv6 server that looks at interface routes against an accepted prefix-filter and will handout dhcpv6 replies with the requested information.
+### What is dhcpd6d-unnumbered?
+- dhcpd6d-unnumbered is a stateless dhcpd6 server that looks at interface routes against an accepted prefix-filter and will handout dhcpd6 replies with the requested information.
 - currently tested bootstrapping baremetal linodes using `UEFI HTTP IPv6` but could be extended for other use cases.
 
 ### How Does it Work?
-- it listens on the dhcpv6 server multicast address on each interface 
+- it listens on the dhcpd6 server multicast address on each interface 
 - the interface is checked against a regex. only matching interfaces are handled (default tap.*_0), not matching are ignored completely
 - if the interfaces matches are regex
 	- routes for that interface are looked up.
@@ -15,7 +15,7 @@
     - Sample (Must compile with IPv6 enabled):
       ```
       #!ipxe
-      
+
       ifconf -c ipv6
       # chain http://[2600:3c02::f03c:93ff:fe60:1d33]/boot2.php?mac=${mac}&domain=${domain}&uuid=${uuid}&manufacturer=${manufacturer}&product=${product}&serial=${serial}
       chain --autofree http://boot.netboot.xyz
@@ -27,12 +27,12 @@
 
 ### Usage:
 ```
-dhcpv6d-unnumbered --help
+dhcpd6-unnumbered -help
 ```
 
 ### Example:
 ```
-/dhcpv6d-unnumbered -regex "et1$" -accept-prefix "2600:3c03::/64" -multicast -loglevel debug  -http-url "http://[2600:3c02::f03c:93ff:fe60:1d33]/ipxe.efi"
+/dhcpd6d-unnumbered -regex "et1$" -accept-prefix "2000:1234::/64" -loglevel debug  -http-url "http://[2000:1234::1234]/ipxe.efi"
 ```
 
 ### Build:

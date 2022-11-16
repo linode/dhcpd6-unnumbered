@@ -3,5 +3,5 @@ dhcpv6d-unnumbered
 dhcpd6-unnumbered
 dhcpd6-unnumbered.gz
 my-debhelper/
-dist/
+dist
 debian/changelog

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"net"
 	"strings"
 	"time"
@@ -11,6 +12,23 @@ import (
 	ll "github.com/sirupsen/logrus"
 	"golang.org/x/net/ipv6"
 )
+
+func IsUsingUEFI(msg *dhcpv6.Message) bool {
+	if archTypes := msg.Options.ArchTypes(); archTypes != nil {
+		if archTypes.Contains(iana.EFI_BC) || archTypes.Contains(iana.EFI_X86_64) || archTypes.Contains(iana.EFI_X86_64_HTTP) {
+			return true
+		}
+	}
+	if opt := msg.GetOneOption(dhcpv6.OptionUserClass); opt != nil {
+		optuc := opt.(*dhcpv6.OptUserClass)
+		for _, uc := range optuc.UserClasses {
+			if strings.Contains(string(uc), "EFI") {
+				return true
+			}
+		}
+	}
+	return false
+}
 
 // handleMsg is triggered every time there is a DHCPv6 request coming in.
 func (l *Listener) HandleMsg6(buf []byte, oob *ipv6.ControlMessage, peer *net.UDPAddr) {
@@ -87,6 +105,25 @@ func (l *Listener) HandleMsg6(buf []byte, oob *ipv6.ControlMessage, peer *net.UD
 
 	msg.Options.Add(&optIAAdress)
 
+	bootURL := ""
+	blobURL := ""
+
+	if *flagiPXE != "" {
+		bootURL = *flagiPXE
+	} else if *flagPxeIP != "" {
+		bootURL = fmt.Sprintf("http://[%s]/boot.ipxe", *flagPxeIP)
+	}
+
+	pxeBlob := "ipxe.efi"
+	if *flagHTTPUrl != "" {
+		blobURL = *flagHTTPUrl
+	} else if *flagPxeIP != "" {
+		if !IsUsingUEFI(msg) {
+			pxeBlob = "undionly.kpxe"
+		}
+		blobURL = fmt.Sprintf("http://[%s]/%s", *flagPxeIP, pxeBlob)
+	}
+
 	mods = append(mods, dhcpv6.WithIANA(optIAAdress))
 	mods = append(mods, dhcpv6.WithServerID(dhcpv6DUID))
 
@@ -108,20 +145,25 @@ func (l *Listener) HandleMsg6(buf []byte, oob *ipv6.ControlMessage, peer *net.UD
 		return
 	}
 
+	userClass := ""
+	if msg.Options.GetOne(dhcpv6.OptionUserClass) != nil {
+		userClass = msg.Options.GetOne(dhcpv6.OptionUserClass).String()
+	}
+
+	archTypes := msg.Options.ArchTypes()
+
 	ll.Debugf("handleMsg6: client requested %v", msg.Options.RequestedOptions())
 	for _, code := range msg.Options.RequestedOptions() {
 		switch code {
 		case dhcpv6.OptionBootfileURL:
-			if msg.Options.GetOne(dhcpv6.OptionUserClass) != nil {
-				userClass := msg.Options.GetOne(dhcpv6.OptionUserClass)
-				if strings.Contains(userClass.String(), "iPXE") {
-					bootOpt := dhcpv6.OptBootFileURL(*flagiPXE)
-					resp.AddOption(bootOpt)
-				}
-			} else if *flagHTTPUrl != "" {
-				bootOpt := dhcpv6.OptBootFileURL(*flagHTTPUrl)
+			if strings.Contains(userClass, "iPXE") {
+				bootOpt := dhcpv6.OptBootFileURL(bootURL)
 				resp.AddOption(bootOpt)
+			} else {
+				blobOpt := dhcpv6.OptBootFileURL(blobURL)
+				resp.AddOption(blobOpt)
 			}
+
 		case dhcpv6.OptionVendorClass:
 			dataString := []byte("HTTPClient")
 			dataSlice := [][]byte{}

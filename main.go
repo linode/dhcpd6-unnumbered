@@ -40,6 +40,7 @@ var (
 	flagDomainname = flag.String("domain-name", "local", "domainname to be handed out in dhcp offers")
 	flagHTTPUrl    = flag.String("http-url", "", "url to serve uefi http client")
 	flagiPXE       = flag.String("iPXE", "", "url to serve iPXE user-class")
+	flagPxeIP      = flag.String("pxe-address", "", "ipv6 address to use as iPXE server")
 
 	logLevels = map[string]func(){
 		"none":    func() { ll.SetOutput(ioutil.Discard) },

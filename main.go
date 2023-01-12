@@ -38,8 +38,10 @@ var (
 		"static hostname to be handed out in dhcp offers, is ignored if dynamic-hostname is enabled",
 	)
 	flagDomainname = flag.String("domain-name", "local", "domainname to be handed out in dhcp offers")
-	flagHTTPUrl    = flag.String("http-url", "", "url to serve uefi http client")
-	flagiPXE       = flag.String("iPXE", "", "url to serve iPXE user-class")
+	flagHTTPUrl    = flag.String("http-url", "", "url to serve UNDI http client (alias for bios-url)")
+	flagiPXE       = flag.String("iPXE", "", "url to serve iPXE config (eg. boot.ipxe)")
+	flagBiosUrl    = flag.String("bios-url", "", "url to serve UNDI http client")
+	flagUefiUrl    = flag.String("uefi-url", "", "url to serve UEFI http client")
 
 	logLevels = map[string]func(){
 		"none":    func() { ll.SetOutput(ioutil.Discard) },

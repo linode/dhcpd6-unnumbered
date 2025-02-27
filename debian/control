@@ -1,0 +1,20 @@
+Source: dhcpd6-unnumbered
+Section: extra
+Priority: extra
+Maintainer: netops <netops@linode.com>
+Build-Depends: debhelper (>= 7.0.0~)
+Standards-Version: 3.9.2
+Vcs-Browser: https://github.com/linode/dhcpd6-unnumbered
+Vcs-Git: https://github.com/linode/dhcpd6-unnumbered
+
+Package: dhcpd6-unnumbered
+Architecture: amd64
+Depends: 
+Provides: ${diverted-files}
+Conflicts: ${diverted-files}
+Description: a stateless dhcp6 helper for unnumbered tap
+  this tool will listen for dhcp6 requests on interface
+  matching a regex. if matched it will lookup the route
+  pointing to this tap and offer that as dhcp6
+  allowing a unknowing client to use dhcp6 on a unnumbered
+  uplink

@@ -13,3 +13,7 @@
 #override_dh_installdeb:
 #	dh_installdeb
 #	rm -f debian/*/DEBIAN/conffiles
+
+# Force gzip compression for control and data tar members for broader dpkg compatibility
+override_dh_builddeb:
+	dh_builddeb -- -Zgzip -z9 --uniform-compression

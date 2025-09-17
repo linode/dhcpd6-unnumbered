@@ -1,4 +1,4 @@
 FROM debian:bullseye
-COPY dhcpv6d-unnumbered /usr/sbin
+COPY dhcp6d-unnumbered /usr/sbin
 EXPOSE 547/udp
-ENTRYPOINT ["/usr/sbin/dhcpv6d-unnumbered"]
+ENTRYPOINT ["/usr/sbin/dhcp6d-unnumbered"]

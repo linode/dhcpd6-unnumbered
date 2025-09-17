@@ -1,7 +1,17 @@
+# binaries
 dhcpd-unnumbered
 dhcpv6d-unnumbered
 dhcpd6-unnumbered
 dhcpd6-unnumbered.gz
-my-debhelper/
-dist
+
+# Makefile artifacts
+generated_version
+lintian.log
+
+# debian artifacts
 debian/changelog
+dist
+my-debhelper/
+*.deb
+*.buildinfo
+*.changes

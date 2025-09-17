@@ -4,12 +4,19 @@ VERSION = $(shell cat generated_version)
 COMMIT   := $(shell git rev-parse --short=8 HEAD)
 
 LDFLAGS=-ldflags "\
+  -s -w \
   -X main.version=${VERSION} \
   -X main.commit=${COMMIT} \
   -X main.buildDate=${BUILDDATE}"
 
 # detect distribution, fallback to bullseye for Jenkins/Docker environments
 DISTRIBUTION := $(shell bash -c 'source /etc/os-release 2>/dev/null && echo $$VERSION_CODENAME || echo "bullseye"')
+
+# choose lintian profile based on distro codename
+LINTIAN_PROFILE := debian
+ifneq (,$(filter $(DISTRIBUTION),bionic focal jammy kinetic lunar mantic noble oracular))
+LINTIAN_PROFILE := ubuntu
+endif
 
 GO ?= $(firstword $(wildcard /usr/local/go/bin/go) /usr/bin/go)
 
@@ -42,11 +49,11 @@ package: generate_version lint
 	< debian/changelog.template > debian/changelog
 	@echo Changelog:
 	@cat -n debian/changelog
-	DEB_BUILD_OPTIONS=nostrip dpkg-buildpackage -b -us -uc
-	lintian --profile debian > lintian.log || (cat -n lintian.log && false)
+	dpkg-buildpackage -b -us -uc
 	mv ../dhcpd6-unnumbered*.deb ./
 	mv ../dhcpd6-unnumbered*.buildinfo ./
 	mv ../dhcpd6-unnumbered*.changes ./
+	lintian --profile $(LINTIAN_PROFILE) ./*.changes > lintian.log || (cat -n lintian.log && false)
 	# @find debian/.debhelper -type f -exec chmod 666 {} \; 2>/dev/null || true
 	# @find debian/.debhelper -type d -exec chmod 777 {} \; 2>/dev/null || true
 	# @sudo rm -rf debian/.debhelper/ 2>/dev/null || true

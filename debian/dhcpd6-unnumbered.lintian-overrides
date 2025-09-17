@@ -1,0 +1,3 @@
+dhcpd6-unnumbered: statically-linked-binary
+dhcpd6-unnumbered: no-manual-page
+

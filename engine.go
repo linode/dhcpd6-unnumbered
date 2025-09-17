@@ -88,5 +88,7 @@ func (e *Engine) Close(ifIdx int) {
 	e.lock.RUnlock()
 	ifName := tap.ifi.Name
 	ll.WithFields(ll.Fields{"Interface": ifName}).Infof("removing %s", ifName)
-	tap.Close()
+	if err := tap.Close(); err != nil {
+		ll.WithFields(ll.Fields{"Interface": ifName}).Warnf("failed to close listener: %v", err)
+	}
 }

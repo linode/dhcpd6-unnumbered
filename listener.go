@@ -55,7 +55,9 @@ func NewListener(idx int, o *ListenerOptions) (*Listener, error) {
 	if err := c.SetControlMessage(ipv6.FlagInterface, true); err != nil {
 		return nil, err
 	}
-	c.JoinGroup(ifi, &addr)
+	if err := c.JoinGroup(ifi, &addr); err != nil {
+		return nil, err
+	}
 
 	return &Listener{
 		c:     c,

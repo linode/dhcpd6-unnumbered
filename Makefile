@@ -20,6 +20,9 @@ endif
 
 GO ?= $(firstword $(wildcard /usr/local/go/bin/go) /usr/bin/go)
 
+# pin golangci-lint major version (and exact version) for reproducibility
+GOLANGCI_LINT_VERSION ?= v2.3.0
+
 all: build
 
 .PHONY: generate_version
@@ -30,10 +33,10 @@ generate_version:
 lint:
 	@echo "Running golangci-lint..."
 	@if ! command -v golangci-lint >/dev/null 2>&1; then \
-		echo "golangci-lint is not installed. Installing..." && \
-		go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest; \
+		echo "golangci-lint is not installed. Installing $(GOLANGCI_LINT_VERSION)..." && \
+		${GO} install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION); \
 	fi
-	golangci-lint run
+	PATH="$$PATH:$$( ${GO} env GOPATH )/bin" golangci-lint run
 
 .PHONY: build
 build: generate_version lint

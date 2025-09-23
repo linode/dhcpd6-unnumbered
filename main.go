@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net"
+	"os"
 	"time"
 
 	ll "github.com/sirupsen/logrus"
@@ -19,6 +20,7 @@ const (
 var (
 	dns listIP
 
+	versionFlag   = flag.Bool("version", false, "print dhcpd6-unnumbered version and exit")
 	flagLeaseTime = flag.Duration("leasetime", (30 * time.Minute), "DHCP lease time. aka Preffered Lifetime, Valid Lifetime x2")
 
 	flagDynHost          = flag.Bool("dynamic-hostname", false, "dynamic hostname generated from {IP/./-}.domainname")
@@ -52,6 +54,10 @@ var (
 		"error":   func() { ll.SetLevel(ll.ErrorLevel) },
 		"fatal":   func() { ll.SetLevel(ll.FatalLevel) },
 	}
+
+	version   = "0.0.0"
+	commit    = "00000000"
+	buildDate = "0000-00-00"
 )
 
 func main() {
@@ -60,6 +66,12 @@ func main() {
 	flagAcceptPrefix := flag.String("accept-prefix", "::/0", "IPv6 prefix to match host routes")
 	flagIfiRegex := flag.String("regex", "eth.*", "regex to match interfaces.")
 	flag.Parse()
+
+	if *versionFlag {
+		fmt.Printf("%s\n  version:    %s\n  commit:     %s\n  build date: %s\n",
+			os.Args[0], version, commit, buildDate)
+		os.Exit(0)
+	}
 
 	ll.SetFormatter(&ll.TextFormatter{
 		FullTimestamp: true,

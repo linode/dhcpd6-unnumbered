@@ -42,6 +42,10 @@ func (l *Listener) HandleMsg6(buf []byte, oob *ipv6.ControlMessage, peer *net.UD
 		return
 	}
 	msg, err := req.GetInnerMessage()
+	if err != nil {
+		ll.Errorf("handleMsg6: error getting inner message: %v", err)
+		return
+	}
 
 	// Create a suitable basic response packet
 	ll.Debugf("handleMsg6: received %s on %v", msg.Type(), l.ifi.Name)
@@ -125,12 +129,24 @@ func (l *Listener) HandleMsg6(buf []byte, oob *ipv6.ControlMessage, peer *net.UD
 	case dhcpv6.MessageTypeSolicit:
 		if msg.GetOneOption(dhcpv6.OptionRapidCommit) != nil {
 			resp, err = dhcpv6.NewReplyFromMessage(msg, mods...)
+			if err != nil {
+				ll.Errorf("handleMsg6: failed building reply from solicit: %v", err)
+				return
+			}
 		} else {
 			resp, err = dhcpv6.NewAdvertiseFromSolicit(msg, mods...)
+			if err != nil {
+				ll.Errorf("handleMsg6: failed building advertise from solicit: %v", err)
+				return
+			}
 		}
 	case dhcpv6.MessageTypeRequest, dhcpv6.MessageTypeConfirm, dhcpv6.MessageTypeRenew,
 		dhcpv6.MessageTypeRebind, dhcpv6.MessageTypeRelease, dhcpv6.MessageTypeInformationRequest:
 		resp, err = dhcpv6.NewReplyFromMessage(msg, mods...)
+		if err != nil {
+			ll.Errorf("handleMsg6: failed building reply: %v", err)
+			return
+		}
 	default:
 		ll.Errorf("handleMsg6: message type %d not supported", msg.Type())
 		return

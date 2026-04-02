@@ -103,10 +103,10 @@ func getLogLevels() []string {
 
 func getHostRoutesIPv6(ifIndex int) ([]*net.IPNet, error) {
 	nlh, err := netlink.NewHandle()
-	defer nlh.Delete()
 	if err != nil {
 		return nil, fmt.Errorf("unable to hook into netlink: %v", err)
 	}
+	defer nlh.Delete()
 
 	link, err := netlink.LinkByIndex(ifIndex)
 	if err != nil {

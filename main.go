@@ -160,13 +160,19 @@ func main() {
 				continue
 			}
 
+			var rxPackets, txPackets uint64
+			if link.Attrs().Statistics != nil {
+				rxPackets = link.Attrs().Statistics.RxPackets
+				txPackets = link.Attrs().Statistics.TxPackets
+			}
+
 			ll.WithFields(ll.Fields{"Interface": ifName}).Tracef(
 				"Netlink fired: %v, admin: %v, OperState: %v, Rx/Tx: %v/%v",
 				ifName,
 				link.Attrs().Flags&net.FlagUp,
 				tapState,
-				link.Attrs().Statistics.RxPackets,
-				link.Attrs().Statistics.TxPackets,
+				rxPackets,
+				txPackets,
 			)
 
 			tapExists := e.Exists(link.Attrs().Index)

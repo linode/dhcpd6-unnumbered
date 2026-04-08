@@ -103,10 +103,10 @@ func getLogLevels() []string {
 
 func getHostRoutesIPv6(ifIndex int) ([]*net.IPNet, error) {
 	nlh, err := netlink.NewHandle()
-	defer nlh.Delete()
 	if err != nil {
 		return nil, fmt.Errorf("unable to hook into netlink: %v", err)
 	}
+	defer nlh.Delete()
 
 	link, err := netlink.LinkByIndex(ifIndex)
 	if err != nil {
@@ -119,6 +119,9 @@ func getHostRoutesIPv6(ifIndex int) ([]*net.IPNet, error) {
 	}
 	var r []*net.IPNet
 	for _, d := range ro {
+		if d.Dst == nil {
+			continue
+		}
 		m, l := d.Dst.Mask.Size()
 		if m == 128 && l == 128 {
 			r = append(r, d.Dst)
@@ -132,7 +135,7 @@ func getHostRoutesIPv6(ifIndex int) ([]*net.IPNet, error) {
 // there are certain aspects not fulfilled. (i.e. link local may not yet be assinged etc
 // it will also help on edge cases where the interface is not yet fully provisioned even though up
 func linkReady(l *netlink.LinkAttrs) bool {
-	if l.OperState == 6 && l.Flags&net.FlagUp == net.FlagUp && l.Statistics.TxPackets > 0 {
+	if l.OperState == 6 && l.Flags&net.FlagUp == net.FlagUp && l.Statistics != nil && l.Statistics.TxPackets > 0 {
 		return true
 	}
 	return false

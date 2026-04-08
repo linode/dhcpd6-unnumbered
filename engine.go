@@ -84,8 +84,12 @@ func (e *Engine) Exists(ifIdx int) bool {
 // Close stops handling a Tap interfaces and drops it from the map - thread safe
 func (e *Engine) Close(ifIdx int) {
 	e.lock.RLock()
-	tap := e.tap[ifIdx]
+	tap, ok := e.tap[ifIdx]
 	e.lock.RUnlock()
+	if !ok || tap == nil {
+		ll.WithFields(ll.Fields{"InterfaceID": ifIdx}).Warnf("ifIndex %d already removed", ifIdx)
+		return
+	}
 	ifName := tap.ifi.Name
 	ll.WithFields(ll.Fields{"Interface": ifName}).Infof("removing %s", ifName)
 	if err := tap.Close(); err != nil {

@@ -121,7 +121,7 @@ func (l *Listener) HandleMsg6(buf []byte, oob *ipv6.ControlMessage, peer *net.UD
 	// This filters out embedded processors like NVIDIA BlueField ECPF that
 	// use software-assigned MACs on the host-facing link.
 	if *flagIgnoreVirtualMAC {
-		if peerMAC := neighLookupMAC(peer.IP, l.ifi.Index); peerMAC != nil && isVirtualMAC(peerMAC) {
+		if peerMAC := neighLookupMAC(peer.IP, l.ifi.Index); peerMAC == nil || isVirtualMAC(peerMAC) {
 			ll.Infof("handleMsg6: ignoring request from virtual MAC %s (peer %s) on %s",
 				peerMAC, peer.IP, l.ifi.Name)
 			return

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"net"
 	"strings"
 	"time"
@@ -29,6 +30,70 @@ func IsUsingUEFI(msg *dhcpv6.Message) bool {
 	return false
 }
 
+// logClientInfo logs detailed information about a DHCPv6 client request
+// to help discriminate between different types of clients
+func logClientInfo(msg *dhcpv6.Message, peer *net.UDPAddr, ifIndex int) {
+	fields := ll.Fields{
+		"msg_type": msg.Type().String(),
+		"peer":     peer.IP.String(),
+	}
+
+	// Client DUID (primary client identifier)
+	if cid := msg.Options.ClientID(); cid != nil {
+		fields["duid_type"] = fmt.Sprintf("%v", cid.Type)
+		fields["hw_type"] = fmt.Sprintf("%v", cid.HwType)
+		if len(cid.LinkLayerAddr) > 0 {
+			fields["client_mac"] = cid.LinkLayerAddr.String()
+			fields["mac_locally_administered"] = isVirtualMAC(cid.LinkLayerAddr)
+		}
+		if cid.EnterpriseNumber != 0 {
+			fields["enterprise_number"] = cid.EnterpriseNumber
+		}
+	}
+
+	// MAC from kernel neighbor cache
+	if peerMAC := neighLookupMAC(peer.IP, ifIndex); peerMAC != nil {
+		fields["peer_mac"] = peerMAC.String()
+	}
+
+	// Architecture types (e.g. UEFI, BIOS)
+	if archTypes := msg.Options.ArchTypes(); archTypes != nil {
+		fields["arch_types"] = fmt.Sprintf("%v", archTypes)
+	}
+
+	// User class
+	if opt := msg.Options.GetOne(dhcpv6.OptionUserClass); opt != nil {
+		fields["user_class"] = opt.String()
+	}
+
+	// Vendor class
+	if opt := msg.Options.GetOne(dhcpv6.OptionVendorClass); opt != nil {
+		fields["vendor_class"] = opt.String()
+	}
+
+	// Vendor-specific info
+	if opt := msg.Options.GetOne(dhcpv6.OptionVendorOpts); opt != nil {
+		fields["vendor_opts"] = opt.String()
+	}
+
+	// IANA
+	if iana := msg.Options.OneIANA(); iana != nil {
+		fields["iana_iaid"] = fmt.Sprintf("%v", iana.IaId)
+	}
+
+	// Requested options
+	if ro := msg.Options.RequestedOptions(); len(ro) > 0 {
+		fields["requested_options"] = fmt.Sprintf("%v", ro)
+	}
+
+	// Rapid commit
+	if msg.GetOneOption(dhcpv6.OptionRapidCommit) != nil {
+		fields["rapid_commit"] = true
+	}
+
+	ll.WithFields(fields).Infof("handleMsg6: client identity dump")
+}
+
 // handleMsg is triggered every time there is a DHCPv6 request coming in.
 func (l *Listener) HandleMsg6(buf []byte, oob *ipv6.ControlMessage, peer *net.UDPAddr) {
 	if oob.IfIndex != l.ifi.Index {
@@ -45,6 +110,22 @@ func (l *Listener) HandleMsg6(buf []byte, oob *ipv6.ControlMessage, peer *net.UD
 	if err != nil {
 		ll.Errorf("handleMsg6: error getting inner message: %v", err)
 		return
+	}
+
+	// Log client identity information for discrimination / debugging
+	if ll.IsLevelEnabled(ll.DebugLevel) {
+		logClientInfo(msg, peer, l.ifi.Index)
+	}
+
+	// Ignore clients with locally-administered (virtual) source MAC addresses.
+	// This filters out embedded processors like NVIDIA BlueField ECPF that
+	// use software-assigned MACs on the host-facing link.
+	if *flagIgnoreVirtualMAC {
+		if peerMAC := neighLookupMAC(peer.IP, l.ifi.Index); peerMAC != nil && isVirtualMAC(peerMAC) {
+			ll.Infof("handleMsg6: ignoring request from virtual MAC %s (peer %s) on %s",
+				peerMAC, peer.IP, l.ifi.Name)
+			return
+		}
 	}
 
 	// Create a suitable basic response packet

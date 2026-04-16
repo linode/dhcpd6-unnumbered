@@ -13,7 +13,9 @@ import (
 	"github.com/insomniacslk/dhcp/dhcpv6/server6"
 
 	ll "github.com/sirupsen/logrus"
+	"golang.org/x/net/bpf"
 	"golang.org/x/net/ipv6"
+	"golang.org/x/sys/unix"
 )
 
 const (
@@ -55,14 +57,25 @@ func NewListener(idx int, o *ListenerOptions) (*Listener, error) {
 		return nil, fmt.Errorf("unable to get interface: %v", err)
 	}
 
-	addr := net.UDPAddr{
+	// Bind the send socket to [::]:547 on the interface — NOT to the multicast
+	// group address.  If bound to ff02::1:2, Linux refuses to use a multicast
+	// address as the source of a unicast reply (EADDRNOTAVAIL).  We join the
+	// multicast group separately below so the kernel still delivers incoming
+	// multicast solicits to the network stack (needed for multicast group
+	// membership and NIC hardware filter).
+	mcastAddr := net.UDPAddr{
 		IP:   dhcpv6.AllDHCPRelayAgentsAndServers,
+		Port: dhcpv6.DefaultServerPort,
+		Zone: ifi.Name,
+	}
+	bindAddr := net.UDPAddr{
+		IP:   net.IPv6zero,
 		Port: dhcpv6.DefaultServerPort,
 		Zone: ifi.Name,
 	}
 
 	ll.Infof("Starting DHCPv6 server for Interface %s", ifi.Name)
-	udpConn, err := server6.NewIPv6UDPConn(addr.Zone, &addr)
+	udpConn, err := server6.NewIPv6UDPConn(ifi.Name, &bindAddr)
 	if err != nil {
 		return nil, err
 	}
@@ -73,7 +86,7 @@ func NewListener(idx int, o *ListenerOptions) (*Listener, error) {
 	}
 	// Join the multicast group so the kernel (and NIC hardware filter) accepts
 	// incoming DHCPv6 multicast frames on this interface.
-	if err := c.JoinGroup(ifi, &addr); err != nil {
+	if err := c.JoinGroup(ifi, &mcastAddr); err != nil {
 		_ = c.Close()
 		return nil, err
 	}
@@ -96,6 +109,13 @@ func NewListener(idx int, o *ListenerOptions) (*Listener, error) {
 		_ = syscall.Close(rawFd)
 		_ = c.Close()
 		return nil, fmt.Errorf("failed to bind raw packet socket: %w", err)
+	}
+	// Attach a BPF filter so the kernel discards all non-DHCPv6 frames before
+	// copying them to userspace: IPv6 / UDP / dst-port 547.
+	if err := attachDHCPv6Filter(rawFd); err != nil {
+		_ = syscall.Close(rawFd)
+		_ = c.Close()
+		return nil, fmt.Errorf("failed to attach BPF filter: %w", err)
 	}
 
 	return &Listener{
@@ -196,4 +216,52 @@ func parseEthernetFrame(frame []byte) (srcMAC net.HardwareAddr, dhcpPayload []by
 		IP:   srcIP,
 		Port: int(binary.BigEndian.Uint16(udpFrame[0:2])),
 	}, nil
+}
+
+// dhcpv6FilterInstructions returns the classic BPF instructions that select
+// only IPv6/UDP frames destined for DHCPv6 server port 547.
+//
+// Frame layout assumed (no 802.1Q VLAN tag):
+//
+//	[12:14] EtherType (must be 0x86DD for IPv6)
+//	[20]    IPv6 next-header (byte 6 of the 40-byte IPv6 header)
+//	[56:58] UDP destination port (14 + 40 + 2)
+func dhcpv6FilterInstructions() []bpf.Instruction {
+	return []bpf.Instruction{
+		// 0: load EtherType halfword
+		bpf.LoadAbsolute{Off: 12, Size: 2},
+		// 1: drop if not IPv6 (0x86DD)
+		bpf.JumpIf{Cond: bpf.JumpEqual, Val: 0x86DD, SkipTrue: 0, SkipFalse: 5},
+		// 2: load IPv6 next-header byte
+		bpf.LoadAbsolute{Off: 20, Size: 1},
+		// 3: drop if not UDP (17)
+		bpf.JumpIf{Cond: bpf.JumpEqual, Val: 17, SkipTrue: 0, SkipFalse: 3},
+		// 4: load UDP destination port halfword
+		bpf.LoadAbsolute{Off: 56, Size: 2},
+		// 5: accept if dst port == 547, else drop
+		bpf.JumpIf{Cond: bpf.JumpEqual, Val: uint32(dhcpv6.DefaultServerPort), SkipTrue: 0, SkipFalse: 1},
+		// 6: accept — return full packet length
+		bpf.RetConstant{Val: 0xFFFF},
+		// 7: drop — return 0
+		bpf.RetConstant{Val: 0},
+	}
+}
+
+// attachDHCPv6Filter installs a classic BPF filter on fd that passes only
+// IPv6/UDP frames destined for DHCPv6 server port 547 (0x0223).
+func attachDHCPv6Filter(fd int) error {
+	insts, err := bpf.Assemble(dhcpv6FilterInstructions())
+	if err != nil {
+		return fmt.Errorf("bpf assemble: %w", err)
+	}
+
+	filters := make([]unix.SockFilter, len(insts))
+	for i, ri := range insts {
+		filters[i] = unix.SockFilter{Code: ri.Op, Jt: ri.Jt, Jf: ri.Jf, K: ri.K}
+	}
+	prog := unix.SockFprog{
+		Len:    uint16(len(filters)),
+		Filter: &filters[0],
+	}
+	return unix.SetsockoptSockFprog(fd, syscall.SOL_SOCKET, syscall.SO_ATTACH_FILTER, &prog)
 }

@@ -282,8 +282,6 @@ func (l *Listener) HandleMsg6(buf []byte, oob *ipv6.ControlMessage, peer *net.UD
 		}
 	}
 
-	woob := &ipv6.ControlMessage{IfIndex: oob.IfIndex}
-
 	ll.Infof(
 		"%s to %s on %s with %s, lease %gm, fqdn %s",
 		resp.Type(),
@@ -295,7 +293,7 @@ func (l *Listener) HandleMsg6(buf []byte, oob *ipv6.ControlMessage, peer *net.UD
 	)
 	ll.Trace(resp.Summary())
 
-	if _, err := l.c.WriteTo(resp.ToBytes(), woob, peer); err != nil {
+	if _, err := l.c.WriteTo(resp.ToBytes(), &ipv6.ControlMessage{IfIndex: oob.IfIndex}, peer); err != nil {
 		ll.Warnf("handleMsg6: write to connection %v failed: %v", peer, err)
 	}
 }

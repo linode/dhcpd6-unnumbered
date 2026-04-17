@@ -7,7 +7,13 @@
 # Requirements: root (CAP_NET_ADMIN + CAP_NET_RAW), Go toolchain.
 #
 # Usage:
-#   sudo ./test-e2e.sh
+#   sudo ./test-e2e.sh            — full automated test (default)
+#   sudo ./test-e2e.sh setup      — create veth pair + host route, then exit
+#                                   so you can run the daemon manually:
+#                                     sudo ./dhcpd6-unnumbered -regex '^d6test-srv$' \
+#                                       -accept-prefix 2001:db8::/32 -loglevel debug
+#                                     sudo /tmp/dhcpv6test-e2e -interface d6test-cli
+#   sudo ./test-e2e.sh cleanup    — remove the veth pair (no other action)
 #
 # On success  : exits 0  (both test cases passed)
 # On failure  : exits 1  (tail of the daemon log is printed for diagnosis)
@@ -32,6 +38,25 @@ log() { echo "  $*"; }
 die() { echo "FATAL: $*" >&2; exit 1; }
 hdr() { echo; echo "── $* ──"; }
 
+# ── Mode ─────────────────────────────────────────────────────────────────────
+MODE=${1:-test}
+case "$MODE" in
+    test|setup|cleanup) ;;
+    *) echo "usage: $0 [test|setup|cleanup]" >&2; exit 1 ;;
+esac
+
+# cleanup subcommand: just remove the veth pair and exit.
+if [[ "$MODE" == "cleanup" ]]; then
+    hdr "cleanup"
+    if ip link show "$SRV_IF" &>/dev/null; then
+        ip link del "$SRV_IF"
+        log "veth pair ($SRV_IF <-> $CLI_IF) removed"
+    else
+        log "veth pair not found — nothing to do"
+    fi
+    exit 0
+fi
+
 cleanup() {
     hdr "cleanup"
     if [[ -n "${DAEMON_PID:-}" ]] && kill -0 "$DAEMON_PID" 2>/dev/null; then
@@ -46,7 +71,8 @@ cleanup() {
     rm -f "$CLIENT_BIN"
     exit "$EXIT_CODE"
 }
-trap cleanup EXIT INT TERM
+# Only auto-clean in full test mode; setup mode intentionally leaves interfaces up.
+[[ "$MODE" == "test" ]] && trap cleanup EXIT INT TERM
 
 [[ $EUID -eq 0 ]] || die "must run as root"
 cd "$(dirname "$0")"
@@ -127,7 +153,23 @@ fi
 ip -6 route add "$HOST_ROUTE" dev "$SRV_IF"
 log "host route added: $HOST_ROUTE dev $SRV_IF"
 
-# ── Daemon ───────────────────────────────────────────────────────────────────
+# ── Setup mode: hand off to the user ─────────────────────────────────────────
+if [[ "$MODE" == "setup" ]]; then
+    echo
+    echo "╔══════════════════════════════════════════════════════════════════╗"
+    echo "║  veth pair ready — run the daemon and client manually:          ║"
+    echo "║                                                                  ║"
+    printf "║  daemon:  sudo %s \\\\\n" "$DAEMON_BIN"
+    printf "║             -regex '^%s\$' \\\\\n" "$SRV_IF"
+    printf "║             -accept-prefix %s \\\\\n" "$ACCEPT_PFX"
+    echo  "║             -loglevel debug                                     ║"
+    echo  "║                                                                  ║"
+    printf "║  client:  sudo %s -interface %s\n" "$CLIENT_BIN" "$CLI_IF"
+    echo  "║                                                                  ║"
+    printf "║  cleanup: sudo %s cleanup\n" "$0"
+    echo  "╚══════════════════════════════════════════════════════════════════╝"
+    exit 0
+fi
 hdr "starting daemon  (log: $DAEMON_LOG)"
 "$DAEMON_BIN" \
     -regex "^${SRV_IF}$" \

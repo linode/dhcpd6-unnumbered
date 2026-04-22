@@ -25,6 +25,13 @@
 ### NOTES:
 - Currently the server hands out ia_na non-temporary address, dns servers, domain-name, search domain, hostname.  RA's are still needed for the default gw, set a nd-prefix in the accepted prefix range with the offlink flag set, managed-flag set, and other config flag set.
 
+### VLAN / 802.1Q:
+Bind to a **VLAN sub-interface**, not the trunk. On a trunk, 802.1Q-tagged frames have EtherType `0x8100` and are invisible to the raw socket — the daemon receives nothing.
+```
+dhcpd6-unnumbered -regex "^eth0\.100$" ...   # correct
+dhcpd6-unnumbered -regex "^eth0$" ...        # broken if eth0 is a trunk
+```
+
 ### Usage:
 ```
 dhcpd6-unnumbered -help

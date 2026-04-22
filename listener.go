@@ -144,6 +144,13 @@ func (l *Listener) Listen() error {
 			if errors.Is(err, os.ErrClosed) {
 				return nil
 			}
+			// ENOBUFS: kernel dropped frames because the socket receive buffer
+			// was full (e.g. a burst of DHCPv6 packets).  Log and continue —
+			// this is transient and does not warrant tearing down the listener.
+			if errors.Is(err, syscall.ENOBUFS) {
+				ll.Warnf("Listen %s: receive buffer overflow, frame(s) dropped", l.ifi.Name)
+				continue
+			}
 			return err
 		}
 

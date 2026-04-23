@@ -81,23 +81,40 @@ func buildSolicit(mac net.HardwareAddr) []byte {
 }
 
 // udpChecksum computes the UDP checksum over the IPv6 pseudo-header.
+// RFC 2460 §8.1: the pseudo-header contains src IP, dst IP, upper-layer
+// packet length, and next-header, followed by the UDP segment itself.
 func udpChecksum(srcIP, dstIP net.IP, udpSeg []byte) uint16 {
+	// IPv6 pseudo-header (40 bytes) layout:
+	//   [0:16]  source address
+	//   [16:32] destination address
+	//   [32:36] upper-layer packet length (32-bit, same value as UDP length field)
+	//   [36:39] zeros (reserved)
+	//   [39]    next-header (17 = UDP)
+	// followed immediately by the UDP segment.
 	pseudo := make([]byte, 40+len(udpSeg))
 	copy(pseudo[0:16], srcIP)
 	copy(pseudo[16:32], dstIP)
 	binary.BigEndian.PutUint32(pseudo[32:36], uint32(len(udpSeg)))
-	pseudo[39] = 17 // next header: UDP
+	pseudo[39] = 17 // next-header: UDP
 	copy(pseudo[40:], udpSeg)
+
+	// RFC 1071 one's-complement sum: accumulate 16-bit words.
 	var sum uint32
 	for i := 0; i+1 < len(pseudo); i += 2 {
 		sum += uint32(binary.BigEndian.Uint16(pseudo[i : i+2]))
 	}
+	// If the payload has an odd number of bytes, pad the final byte on the
+	// left (big-endian), i.e. treat it as the high byte of a 16-bit word.
 	if len(pseudo)%2 != 0 {
 		sum += uint32(pseudo[len(pseudo)-1]) << 8
 	}
+	// Fold the 32-bit accumulator down to 16 bits by adding the carry bits
+	// (upper 16) back into the lower 16, repeating until no carry remains.
 	for sum>>16 != 0 {
 		sum = (sum & 0xffff) + (sum >> 16)
 	}
+	// One's complement: flip all bits. A receiver summing the segment
+	// (including this checksum field) gets 0xffff if no errors occurred.
 	return ^uint16(sum)
 }
 

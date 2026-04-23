@@ -141,13 +141,10 @@ func linkReady(l *netlink.LinkAttrs) bool {
 	return false
 }
 
-func checkNetOpError(err error) error {
-	if err != nil {
-		if strings.Contains(err.Error(), "use of closed network connection") {
-			return nil
-		}
-	}
-	return err
+// htons converts a uint16 from host byte order to network byte order (big-endian),
+// as required when passing protocol constants to AF_PACKET sockets on Linux.
+func htons(i uint16) uint16 {
+	return (i<<8)&0xff00 | i>>8
 }
 
 // isVirtualMAC returns true if the MAC address has the locally-administered
@@ -158,26 +155,4 @@ func isVirtualMAC(mac net.HardwareAddr) bool {
 		return false
 	}
 	return mac[0]&0x02 != 0
-}
-
-// neighLookupMAC looks up the hardware address for the given IP in the
-// kernel's neighbor cache (NDP table) for the specified interface.
-// Returns nil if no entry is found.
-func neighLookupMAC(ip net.IP, ifIndex int) net.HardwareAddr {
-	link, err := netlink.LinkByIndex(ifIndex)
-	if err != nil {
-		ll.Debugf("neighLookupMAC: failed to get link for ifIndex %d: %v", ifIndex, err)
-		return nil
-	}
-	neighs, err := netlink.NeighList(link.Attrs().Index, netlink.FAMILY_V6)
-	if err != nil {
-		ll.Debugf("neighLookupMAC: failed to list neighbors: %v", err)
-		return nil
-	}
-	for _, n := range neighs {
-		if n.IP.Equal(ip) && len(n.HardwareAddr) > 0 {
-			return n.HardwareAddr
-		}
-	}
-	return nil
 }

@@ -32,10 +32,16 @@ func IsUsingUEFI(msg *dhcpv6.Message) bool {
 
 // logClientInfo logs detailed information about a DHCPv6 client request
 // to help discriminate between different types of clients
-func logClientInfo(msg *dhcpv6.Message, peer *net.UDPAddr, ifIndex int) {
+func logClientInfo(msg *dhcpv6.Message, peer *net.UDPAddr, srcMAC net.HardwareAddr) {
 	fields := ll.Fields{
 		"msg_type": msg.Type().String(),
 		"peer":     peer.IP.String(),
+	}
+
+	// Source MAC observed directly from the Ethernet frame header.
+	if len(srcMAC) > 0 {
+		fields["src_mac"] = srcMAC.String()
+		fields["mac_locally_administered"] = isVirtualMAC(srcMAC)
 	}
 
 	// Client DUID (primary client identifier)
@@ -43,17 +49,11 @@ func logClientInfo(msg *dhcpv6.Message, peer *net.UDPAddr, ifIndex int) {
 		fields["duid_type"] = fmt.Sprintf("%v", cid.Type)
 		fields["hw_type"] = fmt.Sprintf("%v", cid.HwType)
 		if len(cid.LinkLayerAddr) > 0 {
-			fields["client_mac"] = cid.LinkLayerAddr.String()
-			fields["mac_locally_administered"] = isVirtualMAC(cid.LinkLayerAddr)
+			fields["duid_mac"] = cid.LinkLayerAddr.String()
 		}
 		if cid.EnterpriseNumber != 0 {
 			fields["enterprise_number"] = cid.EnterpriseNumber
 		}
-	}
-
-	// MAC from kernel neighbor cache
-	if peerMAC := neighLookupMAC(peer.IP, ifIndex); peerMAC != nil {
-		fields["peer_mac"] = peerMAC.String()
 	}
 
 	// Architecture types (e.g. UEFI, BIOS)
@@ -95,7 +95,7 @@ func logClientInfo(msg *dhcpv6.Message, peer *net.UDPAddr, ifIndex int) {
 }
 
 // handleMsg is triggered every time there is a DHCPv6 request coming in.
-func (l *Listener) HandleMsg6(buf []byte, oob *ipv6.ControlMessage, peer *net.UDPAddr) {
+func (l *Listener) HandleMsg6(buf []byte, oob *ipv6.ControlMessage, peer *net.UDPAddr, srcMAC net.HardwareAddr) {
 	if oob.IfIndex != l.ifi.Index {
 		ll.Errorf("handleMsg6: request not on listening socket....%d != %d", oob.IfIndex, l.ifi.Index)
 		return
@@ -114,16 +114,16 @@ func (l *Listener) HandleMsg6(buf []byte, oob *ipv6.ControlMessage, peer *net.UD
 
 	// Log client identity information for discrimination / debugging
 	if ll.IsLevelEnabled(ll.DebugLevel) {
-		logClientInfo(msg, peer, l.ifi.Index)
+		logClientInfo(msg, peer, srcMAC)
 	}
 
 	// Ignore clients with locally-administered (virtual) source MAC addresses.
 	// This filters out embedded processors like NVIDIA BlueField ECPF that
 	// use software-assigned MACs on the host-facing link.
 	if *flagIgnoreVirtualMAC {
-		if peerMAC := neighLookupMAC(peer.IP, l.ifi.Index); peerMAC == nil || isVirtualMAC(peerMAC) {
+		if isVirtualMAC(srcMAC) {
 			ll.Infof("handleMsg6: ignoring request from virtual MAC %s (peer %s) on %s",
-				peerMAC, peer.IP, l.ifi.Name)
+				srcMAC, peer.IP, l.ifi.Name)
 			return
 		}
 	}
@@ -282,8 +282,6 @@ func (l *Listener) HandleMsg6(buf []byte, oob *ipv6.ControlMessage, peer *net.UD
 		}
 	}
 
-	woob := &ipv6.ControlMessage{IfIndex: oob.IfIndex}
-
 	ll.Infof(
 		"%s to %s on %s with %s, lease %gm, fqdn %s",
 		resp.Type(),
@@ -295,7 +293,7 @@ func (l *Listener) HandleMsg6(buf []byte, oob *ipv6.ControlMessage, peer *net.UD
 	)
 	ll.Trace(resp.Summary())
 
-	if _, err := l.c.WriteTo(resp.ToBytes(), woob, peer); err != nil {
+	if _, err := l.c.WriteTo(resp.ToBytes(), &ipv6.ControlMessage{IfIndex: oob.IfIndex}, peer); err != nil {
 		ll.Warnf("handleMsg6: write to connection %v failed: %v", peer, err)
 	}
 }

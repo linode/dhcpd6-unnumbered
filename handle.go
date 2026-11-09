@@ -15,7 +15,8 @@ import (
 
 func IsUsingUEFI(msg *dhcpv6.Message) bool {
 	if archTypes := msg.Options.ArchTypes(); archTypes != nil {
-		if archTypes.Contains(iana.EFI_BC) || archTypes.Contains(iana.EFI_X86_64) || archTypes.Contains(iana.EFI_X86_64_HTTP) {
+		if archTypes.Contains(iana.EFI_BC) || archTypes.Contains(iana.EFI_X86_64) || archTypes.Contains(iana.EFI_X86_64_HTTP) ||
+			archTypes.Contains(iana.EFI_ARM64) || archTypes.Contains(iana.EFI_ARM64_HTTP) {
 			return true
 		}
 	}

@@ -192,13 +192,32 @@ func (l *Listener) HandleMsg6(buf []byte, oob *ipv6.ControlMessage, peer *net.UD
 
 	blobURL := ""
 	if IsUsingUEFI(msg) {
-		if *flagUefiUrl != "" {
-			blobURL = *flagUefiUrl
+		blobURL = *flagUefiUrl
+		for _, arch := range msg.Options.ArchTypes() {
+			url := ""
+			switch arch {
+			case iana.EFI_ARM64, iana.EFI_ARM64_HTTP:
+				url = *flagUefiARM64Url
+			case iana.EFI_X86_64, iana.EFI_X86_64_HTTP:
+				url = *flagUefiX8664Url
+			default:
+				continue
+			}
+			if url == "" {
+				url = *flagUefiUrl
+			}
+			if url != "" {
+				blobURL = url
+				break
+			}
 		}
 	} else if *flagBiosUrl != "" {
 		blobURL = *flagBiosUrl
 	} else if *flagHTTPUrl != "" {
 		blobURL = *flagHTTPUrl
+	}
+	if len(msg.Options.ArchTypes()) == 0 && *flagUefiX8664Url != "" {
+		blobURL = *flagUefiX8664Url
 	}
 
 	mods = append(mods, dhcpv6.WithIANA(optIAAdress))

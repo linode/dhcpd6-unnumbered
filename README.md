@@ -10,7 +10,7 @@
 - if the interfaces matches are regex
 	- routes for that interface are looked up.
     - a route that matches our accept-prefix filter is handed out in the `IA_NA` option
-- if a boot-url is requested we hand out a file depending on the user class
+- if a boot-url is requested we select a file using the client's architecture and user class
   - currently tested is using the `UEFI IPv6 HTTP` from there you can handout an ipxe.efi with embedded chain.
     - Sample (Must compile with IPv6 enabled):
       ```
@@ -47,43 +47,22 @@ dhcpd6-unnumbered -help
 GOOS=LINUX go build
 ```
 
-### Network boot for single-architecture racks:
-
-Build the daemon for the CPU of the device running it (for example, x86-64
-Destiny). The connected hosts' architectures are independent of the daemon's
-architecture.
-
-Each rack contains either ARM64 or x86-64 hosts. Configure the existing
-`-uefi-url` with the image published for that rack's hosts. For example,
-an ARM64 rack could use:
+### Architecture-aware network boot:
 
 ```
 dhcpd6-unnumbered -regex "^et1$" -accept-prefix "2000:1234::/64" \
-  -uefi-url "http://[2000:1234::1234]/arm64/ipxe.efi" \
+  -uefi-arm64-url "http://[2000:1234::1234]/arm64/ipxe.efi" \
+  -uefi-x86_64-url "http://[2000:1234::1234]/x86_64/ipxe.efi" \
   -iPXE "http://[2000:1234::1234]/boot.ipxe"
 ```
 
-For an x86-64 rack, set `-uefi-url` to the published x86-64 image instead.
-These are example URLs, not built-in paths.
+DHCPv6 option 61 selects the ARM64 UEFI (11/19) or x86-64 UEFI (7/16)
+image, respecting the client's architecture preference order. If architecture
+is absent, the configured x86-64 URL is used. This is a default, not CPU detection.
 
-The daemon does not choose or validate the image's CPU architecture. All clients
-recognized as UEFI receive the same configured `-uefi-url`. ARM64 UEFI (11) and
-ARM64 UEFI HTTP (19) are recognized alongside the existing x86-64 UEFI values.
-This only distinguishes boot environments; rack configuration selects the image.
-If the architecture option is absent, a user-class string containing `EFI` can
-still identify UEFI. Other clients use `-bios-url`, or `-http-url` if unset.
-UEFI clients do not fall back to those URLs if `-uefi-url` is empty.
-
-Clients identifying as iPXE receive the configured `-iPXE` script URL first,
-regardless of the UEFI URL. That script must load kernels and other boot artifacts
-compatible with the rack's hosts. Configure a rack-specific script if necessary;
-a shared script is suitable only if it handles both architectures correctly.
-The boot files must be hosted separately; this daemon only advertises their URLs.
-
-The boot/provisioning service defines the actual URLs when it publishes the
-images and scripts. Obtain them from that service's deployment configuration,
-then configure the ToR's persistent startup arguments (for example through RCM).
-The daemon neither discovers URLs nor checks that they are reachable.
-Publish the image and script before changing the rack's arguments, and verify
-downloads and a real boot from a host on the boot network.
+`-uefi-url` remains the fallback when an architecture-specific UEFI URL is unset.
+Without the new flags, existing UEFI/BIOS behavior is unchanged.
+`-iPXE` still takes priority for iPXE clients; its script must support the
+requesting host's architecture. Host the images separately at your chosen URLs;
+the daemon only advertises them and does not validate their contents.
 

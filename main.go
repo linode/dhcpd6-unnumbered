@@ -44,6 +44,8 @@ var (
 	flagiPXE             = flag.String("iPXE", "", "url to serve iPXE config (eg. boot.ipxe)")
 	flagBiosUrl          = flag.String("bios-url", "", "url to serve UNDI http client")
 	flagUefiUrl          = flag.String("uefi-url", "", "url to serve UEFI http client")
+	flagUefiARM64Url     = flag.String("uefi-arm64-url", "", "URL to serve ARM64 UEFI clients")
+	flagUefiX8664Url     = flag.String("uefi-x86_64-url", "", "URL to serve x86-64 UEFI clients (also used when client architecture is absent)")
 	flagIgnoreVirtualMAC = flag.Bool("ignore-virtual-mac", true, "ignore DHCP requests from clients with locally-administered (virtual) source MAC addresses")
 
 	logLevels = map[string]func(){
